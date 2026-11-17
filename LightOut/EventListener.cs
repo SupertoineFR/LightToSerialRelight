@@ -7,16 +7,17 @@ using System.Threading.Tasks;
 using UnityEngine;
 using System.Collections;
 using BS_Utils.Utilities;
+using Zenject;
 
 namespace LightOut
 {
-    class EventListener : MonoBehaviour
+    class EventListener : IInitializable, IDisposable
     {
-        private BeatmapObjectCallbackController Ec;
-        private ColorManager Cm;
-        private BeatmapLevelSO BMD;
-        BeatmapObjectManager _spawnController;
-        private int BPM;
+        private readonly BeatmapCallbacksController Ec;
+        private readonly ColorManager Cm;
+        private readonly BeatmapObjectManager _spawnController;
+        private BeatmapDataCallbackWrapper _eventCallback;
+        private bool _noteCutSubscribed;
         private Color C1;
         private Color C2;
         public int redLeft;
@@ -31,60 +32,65 @@ namespace LightOut
 
         bool right = true;
 
-        void Awake()
+        public EventListener(BeatmapCallbacksController callbacksController, ColorManager colorManager, BeatmapObjectManager beatmapObjectManager)
         {
-            _spawnController = GameObject.FindObjectOfType<BeatmapObjectManager>();
+            Ec = callbacksController;
+            Cm = colorManager;
+            _spawnController = beatmapObjectManager;
+        }
+
+        private static bool Active =>
+            Settings.instance._isModEnabled && Settings.arduinoPort != null && Settings.arduinoPort.IsOpen;
+
+        public void Initialize()
+        {
+            if (!Active)
+                return;
 
             Plugin.log.Notice("Initializing..");
             Plugin.log.Notice(Settings.instance.eventChoice);
-
-            Ec = Resources.FindObjectsOfTypeAll<BeatmapObjectCallbackController>().FirstOrDefault();
-            Cm = Resources.FindObjectsOfTypeAll<ColorManager>().LastOrDefault();
-            BMD = Resources.FindObjectsOfTypeAll<BeatmapLevelSO>().FirstOrDefault();
 
             if (Settings.instance.eventChoice == "noteCuts")
             {
                 Plugin.log.Info("Adding event listner to noteCuts");
                 _spawnController.noteWasCutEvent += OnNoteCut;  //Flash on note cuts
+                _noteCutSubscribed = true;
             }
-            
+
             if (Settings.instance.eventChoice == "lightEvents")
             {
                 Plugin.log.Info("Adding event listner to lightEvents");
-                Ec.beatmapEventDidTriggerEvent += EventHappened; //Flash on map's light events
+                _eventCallback = Ec.AddBeatmapCallback<BasicBeatmapEventData>(EventHappened); //Flash on map's light events
             }
 
-            C1 = Cm.ColorForNoteType(NoteType.NoteB);
+            C1 = Cm.ColorForType(ColorType.ColorB);
             redLeft = Mathf.RoundToInt(C1.r * 255);
             greenLeft = Mathf.RoundToInt(C1.g * 255);
             blueLeft = Mathf.RoundToInt(C1.b * 255);
-            C2 = Cm.ColorForNoteType(NoteType.NoteA);
+            C2 = Cm.ColorForType(ColorType.ColorA);
             redRight = Mathf.RoundToInt(C2.r * 255);
             greenRight = Mathf.RoundToInt(C2.g * 255);
             blueRight = Mathf.RoundToInt(C2.b * 255);
 
-            BPM = (int)BMD.beatsPerMinute; //Not used, may come useful in future
-
-            //Plugin.log.Info(" BPM = " + BPM.ToString());
-
-            if (Settings.arduinoPort.IsOpen)
+            if (Settings.instance.rainbowMode)
             {
-                if (Settings.instance.rainbowMode)
-                {
-                    StartRainbowMode(Settings.arduinoPort);
-                }
-                else
-                {
-                    Plugin.log.Info("Sending Color to arduino...");
-                    SendColorToArduino(Settings.arduinoPort);
-                }
-
+                StartRainbowMode(Settings.arduinoPort);
+            }
+            else
+            {
+                Plugin.log.Info("Sending Color to arduino...");
+                SendColorToArduino(Settings.arduinoPort);
             }
         }
 
-        void OnDestroy()
+        public void Dispose()
         {
-            if (Settings.arduinoPort.IsOpen)
+            if (_noteCutSubscribed)
+                _spawnController.noteWasCutEvent -= OnNoteCut;
+            if (_eventCallback != null)
+                Ec.RemoveBeatmapCallback(_eventCallback);
+
+            if (Settings.arduinoPort != null && Settings.arduinoPort.IsOpen)
             {
                 Settings.arduinoPort.Write("#");
                 Plugin.log.Info("Removing Eventlistener");
@@ -93,11 +99,11 @@ namespace LightOut
 
         int lastEventNumber = 0;
 
-        void EventHappened(BeatmapEventData Data)
+        void EventHappened(BasicBeatmapEventData Data)
         {
             int Event;
             int value = Data.value;
-            Int32.TryParse(Data.type.ToString().Replace("Event", ""), out Event);
+            Int32.TryParse(Data.basicBeatmapEventType.ToString().Replace("Event", ""), out Event);
             if (value < 2000000000)
             {
                 if(lastEventNumber != value && Data.time > (lastEventTime + maxArduinoDelay*0.001)) //Make sure to never send same signal twice AND do not oversend, otherwise arduino will display beats too late.
@@ -142,7 +148,7 @@ namespace LightOut
             }
         }
         
-        private void OnNoteCut(INoteController spawnController, NoteCutInfo info)
+        private void OnNoteCut(NoteController noteController, in NoteCutInfo info)
         {
             Plugin.log.Notice("Note Cut Event!");
             if (Settings.instance.rainbowMode)

@@ -10,8 +10,23 @@ using UnityEngine;
 
 namespace LightOut
 {
-    class Settings : PersistentSingleton<Settings>
+    class Settings : MonoBehaviour
     {
+        private static Settings _instance;
+        public static Settings instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    var go = new GameObject("LightOut.Settings");
+                    DontDestroyOnLoad(go);
+                    _instance = go.AddComponent<Settings>();
+                }
+                return _instance;
+            }
+        }
+
         public static Config config;
         public static SerialPort arduinoPort = null;
         public static Settings settings;

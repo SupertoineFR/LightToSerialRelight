@@ -1,15 +1,26 @@
 # LightToSerialRelight
 A Beat Saber mod that allows you to control your Arduino LED Strip based on Beat Saber events.
 
-This mod is **updated version** of the mod created by [D3rPole](https://github.com/D3rPole/BS-LightToSerial).
+**Disclaimer**: AI (claude opus 5.5 low) was used to patch this mod up to 1.40.8
+
+This mod is yet another updated version of the mod created by [D3rPole](https://github.com/D3rPole/BS-LightToSerial).   
+It was forked from [MyLegIsPotato](https://github.com/MyLegIsPotato/LightToSerialRelight), in order to update it. It's not my code, far from it.
+
 It allows you to communicate with Arduino based on events to display preset animations and patterns on your wb2812 adressable LED strip. The mod automatically gets custom colors from Beat Saber and makes them fully saturated before reaching arduino, it may be the reason if some colors on LED strip get displayed incorrectly. Most of the times it works as intended.
 
 [Gameplay](https://www.youtube.com/watch?v=9OCgU-t3w0Y)
 
 ## Mod installation
-Just download the .dll file and drop it into your BeatSaber folder/Plugins.
+Just download the .dll file from [the releases](https://github.com/SupertoineFR/LightToSerialRelight/releases) and drop it into your BeatSaber folder in /Plugins.
 
-You will also need other mods, that is [BeatSaberMarkupLanguage](https://github.com/monkeymanboy/BeatSaberMarkupLanguage) and [BeatSaberUtils](https://github.com/Kylemc1413/Beat-Saber-Utils).
+The mod needs four other dependencies installed in Beat Saber, next to the name is the minimum required version.
+
+BSIPA	4.3.0
+BeatSaberMarkupLanguage (BSML)	1.12.0
+BS Utils	1.14.0
+SiraUtil	3.2.0
+
+These can all be installed inside of [BSManager](https://github.com/Zagrios/bs-manager).
 
 ## Setup
 

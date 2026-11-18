@@ -27,7 +27,7 @@ Can't tell if this program works with other types of LEDs.
 
 You will also need to install FastLED library. To do so go to your Arduino IDE -> Tools -> Manage Libraries -> Search for: *FastLED* -> Select version **3.3.0** -> Click install
 
-Default baudrate (1200) was tested to work fine and there is no need to use any faster ones. You can do it anyway, there is this functionality. After selecting your port in game setting (you can find which one in Arduino IDE) and clicking **apply** the LED strip should turn on to white-ish palette with colored ends and with a breathing animation, it's a standby signal telling you that connection was successful.
+Default baudrate is 115200. The baudrate selected in the game settings must match `Serial.begin(...)` in `LedMainSerial.ino`. After selecting your port in game setting (you can find which one in Arduino IDE) and clicking **apply** the LED strip should turn on to white-ish palette with colored ends and with a breathing animation, it's a standby signal telling you that connection was successful.
 
 ## Other information
 Remember to report any bugs. If you have any question regarding modding don't hestitate to ask, it wasn't easy at the start for me too.

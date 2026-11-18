@@ -16,6 +16,7 @@ namespace LightOut
         private readonly BeatmapCallbacksController Ec;
         private readonly ColorManager Cm;
         private readonly BeatmapObjectManager _spawnController;
+        private readonly IGamePause _gamePause;
         private BeatmapDataCallbackWrapper _eventCallback;
         private bool _noteCutSubscribed;
         private Color C1;
@@ -27,16 +28,18 @@ namespace LightOut
         public int greenRight;
         public int blueRight;
         float lastEventTime;
+        float lastNoteCutTime = float.MinValue;
         float maxArduinoDelay = 15; //Time in miliseconds in which arduino goes through one read cycle. You can calculate your own time by
         // printing char each cycle -> going into serial monitor (Arduino IDE) -> enabling timestamps => Subtract earlier time from newer time.
 
         bool right = true;
 
-        public EventListener(BeatmapCallbacksController callbacksController, ColorManager colorManager, BeatmapObjectManager beatmapObjectManager)
+        public EventListener(BeatmapCallbacksController callbacksController, ColorManager colorManager, BeatmapObjectManager beatmapObjectManager, IGamePause gamePause)
         {
             Ec = callbacksController;
             Cm = colorManager;
             _spawnController = beatmapObjectManager;
+            _gamePause = gamePause;
         }
 
         private static bool Active =>
@@ -49,6 +52,8 @@ namespace LightOut
 
             Plugin.log.Notice("Initializing..");
             Plugin.log.Notice(Settings.instance.eventChoice);
+
+            _gamePause.didPauseEvent += OnGamePaused;
 
             if (Settings.instance.eventChoice == "noteCuts")
             {
@@ -85,6 +90,7 @@ namespace LightOut
 
         public void Dispose()
         {
+            _gamePause.didPauseEvent -= OnGamePaused;
             if (_noteCutSubscribed)
                 _spawnController.noteWasCutEvent -= OnNoteCut;
             if (_eventCallback != null)
@@ -92,6 +98,7 @@ namespace LightOut
 
             if (Settings.arduinoPort != null && Settings.arduinoPort.IsOpen)
             {
+                Settings.arduinoPort.DiscardOutBuffer(); //Drop any effects that haven't been sent yet
                 Settings.arduinoPort.Write("#");
                 Plugin.log.Info("Removing Eventlistener");
             }
@@ -125,8 +132,7 @@ namespace LightOut
                             Settings.arduinoPort.Write("w"); //RightFlashAndLeaveOn
                             break;
                         case 3:
-                            Settings.arduinoPort.Write("e");
-                            Settings.arduinoPort.Write("p"); //RightFlashAndTurnOff
+                            Settings.arduinoPort.Write("e"); //RightFlashAndTurnOff (arduino turns itself off after the flash)
                             break;
                         case 5:
                             Settings.arduinoPort.Write("r"); //LeftTurnOn
@@ -135,8 +141,7 @@ namespace LightOut
                             Settings.arduinoPort.Write("t"); //LeftFlashAndLeaveOn
                             break;
                         case 7:
-                            Settings.arduinoPort.Write("y");
-                            Settings.arduinoPort.Write("p"); //LeftFlashAndTurnOff
+                            Settings.arduinoPort.Write("y"); //LeftFlashAndTurnOff (arduino turns itself off after the flash)
                             break;
                         default:
                             Settings.arduinoPort.Write("p"); //Turn off on error
@@ -150,6 +155,12 @@ namespace LightOut
         
         private void OnNoteCut(NoteController noteController, in NoteCutInfo info)
         {
+            //Same throttle as light events, so fast streams don't flood the arduino.
+            float now = Time.realtimeSinceStartup;
+            if (now < lastNoteCutTime + maxArduinoDelay * 0.001f)
+                return;
+            lastNoteCutTime = now;
+
             Plugin.log.Notice("Note Cut Event!");
             if (Settings.instance.rainbowMode)
             {
@@ -166,6 +177,16 @@ namespace LightOut
                 Settings.arduinoPort.Write("r"); //LeftTurnOn
                 right = !right;
             }
+        }
+
+        private void OnGamePaused()
+        {
+            if (Settings.arduinoPort == null || !Settings.arduinoPort.IsOpen)
+                return;
+
+            //Throw away anything still queued on the PC side and turn the lights off.
+            Settings.arduinoPort.DiscardOutBuffer();
+            Settings.arduinoPort.Write("p");
         }
 
         private void StartRainbowMode(SerialPort port)

@@ -54,7 +54,7 @@ namespace LightOut
         [UIValue("baud-choice")]
         public int baudChoice
         {
-            get => config.GetInt("LightOut", nameof(baudChoice), 1200);
+            get => config.GetInt("LightOut", nameof(baudChoice), 115200);
             set => config.SetInt("LightOut", nameof(baudChoice), value);
         }
 

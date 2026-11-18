@@ -1,13 +1,13 @@
 #include <FastLED.h>
 
 #define LED_PIN     9
-#define NUM_LEDS    205
-int SelectedBRIGHTNESS = 120;
+#define NUM_LEDS    120
+int SelectedBRIGHTNESS = 255;
 int BRIGHTNESS = 121;
 int BRIGHTNESS_MAX = 255;
 int BRIGHTNESS_MIN = 1;
 #define LED_TYPE    WS2811
-#define COLOR_ORDER GRB
+#define COLOR_ORDER BRG
 CRGB leds[NUM_LEDS];
 
 int UPDATES_PER_SECOND = 120;
@@ -74,6 +74,9 @@ CRGB newColor2 = CRGB::Red;
 
 char inputChar;
 
+#define FLASH_HOLD_MS 150     //How long "flash and turn off" effects stay lit
+unsigned long flashOffAt = 0; //millis() time to auto turn off, 0 = none pending
+
 void IncreaseAnimationSpeedIndex(bool increase) {
   int newIndex;
   if (increase) {
@@ -88,9 +91,16 @@ void IncreaseAnimationSpeedIndex(bool increase) {
 }
 
 void ClearBuffer() {
-  for (int i; i < 64; i++) {
-    int trash = Serial.read();
+  while (Serial.available() > 0) {
+    Serial.read();
   }
+}
+
+//Waits (up to Serial timeout) for the next byte of a multi-byte command.
+uint8_t ReadByteBlocking() {
+  uint8_t b = 0;
+  Serial.readBytes(&b, 1);
+  return b;
 }
 
 void setup() {
@@ -98,7 +108,7 @@ void setup() {
   currentPalette = RainbowColors_p;
   currentBlending = NOBLEND;
   SetupBSPalettes();
-  delay( 3000 ); // power-up safety delay
+  delay( 10 ); // power-up safety delay
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
   FastLED.setBrightness(  BRIGHTNESS );
   FastLED.setTemperature(UncorrectedTemperature);
@@ -113,7 +123,7 @@ void setup() {
   pinMode(brightnessSelectionPin, OUTPUT);
   pinMode(listenIndicatorPin, OUTPUT);
 
-  Serial.begin(1200);
+  Serial.begin(115200); //Must match the baud rate selected in the Beat Saber mod settings
   FastLED.setMaxRefreshRate(120);
   //Serial.println(newColor2.r);
 }
@@ -224,74 +234,16 @@ void loop() {
   //////////////////////////////////////////
   //----------- SERIAL CONTROL------------// //This is for different setting using Serial Monitor (Arduino IDE) OR my separate console app.
   //////////////////////////////////////////
-  //Check for serial each n cycles (does not miss any bytes, they are just waiting in buffer for next n-th cycle)
-  //n --------v
-  if (timer > 20) {
-    input = Serial.read();
-    inputChar = input;
-    //Serial.println(inputChar);
+  //Process EVERY byte waiting in the buffer on every frame, so commands never queue up.
+  //Effect commands just set state, so when several arrive at once the latest one wins.
+  while (Serial.available() > 0) {
+    ProcessSerialByte(Serial.read());
+  }
 
-    CheckForAnimationData();
-    CheckForStaticPalette();
-    CheckForRainbowMode();
-
-    if (inputChar == '-') { //Feedback byte for LED Controller and Beat Saber mod
-      Serial.write('a');
-    }
-
-    if (inputChar == '%') { //End receiving Beat Saber colors
-      primaryColor.r = colorData[0];
-      primaryColor.g = colorData[1];
-      primaryColor.b = colorData[2];
-      secondaryColor.r = colorData[3];
-      secondaryColor.g = colorData[4];
-      secondaryColor.b = colorData[5];
-      SetupBSPalettes();
-      BRIGHTNESS = 255;
-      enableShowing = true;
-    }
-
-    if (!enableShowing) {
-      Serial.readBytes(colorData, 6);
-    }
-
-    if (!receivingColorData && !receivingAnimationData) {
-      //These are arduino commands. They are single characters so arduino can process them instantly.
-      //This is basically code for your PC to communicate with arduino, if you want you can just send ASCII bytes equivalents
-      //Serial.println(inputChar); // <--- You can debug things here
-      switch (inputChar) {
-        case '1': menuPos--; break; //1
-        case '2': menuPos++; break; //2
-        case '3': animationSpeedIndex--; break; //3
-        case '4': animationSpeedIndex++; break; //4
-        case '5': currentAnimation--; break; //5
-        case '6': currentAnimation++; break; //6
-        case '7': SelectedBRIGHTNESS = SelectedBRIGHTNESS / 2; break; //7
-        case '8': SelectedBRIGHTNESS = SelectedBRIGHTNESS * 2; break; //8
-
-        case 'z': currentAnimation = 0; break;
-        case 'x': currentAnimation = 1; break;
-        case 'c': LoadDefaultSettings(); break; //reset
-
-        case '@': menuPos = 1; currentAnimation = 0; ClearBuffer(); break; //Closes Connection and enables other effects.
-
-        //BeatSaber mod palettes:
-        case '#': menuPos = 20; break;
-        case 'q': menuPos = 21; break;
-        case 'w': menuPos = 22; break;
-        case 'e': menuPos = 23; break;
-        case 'r': menuPos = 24; break;
-        case 't': menuPos = 25; break;
-        case 'y': menuPos = 26; break;
-        case 'p': menuPos = 29; break;
-        case '^': SetupBSPalettesRainbow(); break;
-      }
-    }
-    //Resets timer when the cycle repeats
-    timer = 0;
-  } else {
-    //Otherwise increments
-    timer++;
+  //"Flash and turn off" effects switch themselves off after a short hold.
+  if (flashOffAt != 0 && (long)(millis() - flashOffAt) >= 0) {
+    menuPos = 29;
+    flashOffAt = 0;
   }
 
   /////////////////////////////////////////
@@ -348,10 +300,73 @@ void loop() {
 //----------SYSTEM FUNCTIONS-----------//
 /////////////////////////////////////////
 
+void ProcessSerialByte(uint8_t b) {
+  input = b;
+  inputChar = input;
+  //Serial.println(inputChar);
+
+  CheckForAnimationData();
+  CheckForStaticPalette();
+  CheckForRainbowMode();
+
+  if (inputChar == '-') { //Feedback byte for LED Controller and Beat Saber mod
+    Serial.write('a');
+  }
+
+  if (inputChar == '%') { //End receiving Beat Saber colors
+    primaryColor.r = colorData[0];
+    primaryColor.g = colorData[1];
+    primaryColor.b = colorData[2];
+    secondaryColor.r = colorData[3];
+    secondaryColor.g = colorData[4];
+    secondaryColor.b = colorData[5];
+    SetupBSPalettes();
+    BRIGHTNESS = 255;
+    enableShowing = true;
+  }
+
+  if (!enableShowing) {
+    Serial.readBytes(colorData, 6);
+  }
+
+  if (!receivingColorData && !receivingAnimationData) {
+    //These are arduino commands. They are single characters so arduino can process them instantly.
+    //This is basically code for your PC to communicate with arduino, if you want you can just send ASCII bytes equivalents
+    //Serial.println(inputChar); // <--- You can debug things here
+    switch (inputChar) {
+      case '1': menuPos--; break; //1
+      case '2': menuPos++; break; //2
+      case '3': animationSpeedIndex--; break; //3
+      case '4': animationSpeedIndex++; break; //4
+      case '5': currentAnimation--; break; //5
+      case '6': currentAnimation++; break; //6
+      case '7': SelectedBRIGHTNESS = SelectedBRIGHTNESS / 2; break; //7
+      case '8': SelectedBRIGHTNESS = SelectedBRIGHTNESS * 2; break; //8
+
+      case 'z': currentAnimation = 0; break;
+      case 'x': currentAnimation = 1; break;
+      case 'c': LoadDefaultSettings(); break; //reset
+
+      case '@': menuPos = 1; currentAnimation = 0; flashOffAt = 0; ClearBuffer(); break; //Closes Connection and enables other effects.
+
+      //BeatSaber mod palettes:
+      case '#': menuPos = 20; flashOffAt = 0; break;
+      case 'q': menuPos = 21; flashOffAt = 0; break;
+      case 'w': menuPos = 22; flashOffAt = 0; break;
+      case 'e': menuPos = 23; flashOffAt = millis() + FLASH_HOLD_MS; break; //Flash, then auto turn off
+      case 'r': menuPos = 24; flashOffAt = 0; break;
+      case 't': menuPos = 25; flashOffAt = 0; break;
+      case 'y': menuPos = 26; flashOffAt = millis() + FLASH_HOLD_MS; break; //Flash, then auto turn off
+      case 'p': menuPos = 29; flashOffAt = 0; break;
+      case '^': SetupBSPalettesRainbow(); break;
+    }
+  }
+}
+
 void CheckForAnimationData() {
   if (inputChar == '|') {
     receivingAnimationData = true;
-    inputChar = Serial.read();
+    inputChar = ReadByteBlocking();
     int animationNumber = inputChar - '0';
     //Serial.print(animationNumber);
     currentAnimation = animationNumber;
@@ -385,8 +400,7 @@ void CheckForStaticPalette() {
       //Serial.println(newColor2.r);
       receivedPalette[i] = newColor2;
     }
-    delay(20);
-    input = Serial.read();
+    input = ReadByteBlocking();
     inputChar = input;
     //Serial.println(inputChar);
     if (inputChar == '1') {

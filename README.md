@@ -8,6 +8,9 @@ It was forked from [MyLegIsPotato](https://github.com/MyLegIsPotato/LightToSeria
 
 It allows you to communicate with Arduino based on events to display preset animations and patterns on your wb2812 adressable LED strip. The mod automatically gets custom colors from Beat Saber and makes them fully saturated before reaching arduino, it may be the reason if some colors on LED strip get displayed incorrectly. Most of the times it works as intended.
 
+**WARNING**: Once the mod is installed, it **will** blindly send serial data over whatever open port it finds. This could lead to *bad stuff* happening depending on what you have plugged into your computer! 
+I am NOT responsible for any hardware destroyed this way. Please just be careful!
+
 [Gameplay(Outdated)](https://www.youtube.com/watch?v=9OCgU-t3w0Y)  New video hopefully soon
 
 ## Mod installation

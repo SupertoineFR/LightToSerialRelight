@@ -120,6 +120,6 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
   <PostBuildEvent>copy /Y "$(TargetDir)$(TargetFileName)" "W:\BSManager\BSInstances\1.40.8\Plugins"
-copy /Y "$(TargetDir)$(TargetFileName)" "D:\! PROJEKTY\VISUAL STUDIO\LightToSerialRelight"</PostBuildEvent>
+</PostBuildEvent>
 </PropertyGroup>
 </Project>

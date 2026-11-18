@@ -22,7 +22,7 @@ namespace LightOut
     public class Plugin
     {
         public string Name => "LightToSerialRelight";
-        public string Version => "1.8.1";
+        public string Version => "1.3.0";
 
         internal static bool gameCoreJustLoaded = false;
         public static IPA.Logging.Logger log;

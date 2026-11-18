@@ -23,28 +23,7 @@ CRGBPalette16 receivedPalette;
 extern CRGBPalette16 myRedWhiteBluePalette;
 extern const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM;
 
-const int buttonOnePin = 2;     // the number of the pushbutton pin
-const int buttonTwoPin = 3;     // the number of the pushbutton pin
-const int buttonThreePin = 4;     // the number of the pushbutton pin
-const int microphonePin = 11;     // the number of the pushbutton pin
-
-//Control LEDs pins:
-const int paletteSelectionPin = 8;
-const int useMicSelectionPin = 12;
-const int brightnessSelectionPin = 11;
-const int listenIndicatorPin = 10;
-
-int buttonOne = 0;         // variable for reading the pushbutton status
-int buttonTwo = 0;
-int buttonThree = 0;
-
 int menuPos = 1;
-int menuNum = 0;
-int menusCount = 2;
-
-bool buttonOnePressed = false;
-bool buttonTwoPressed = false;
-bool buttonThreePressed = false;
 
 bool animationReverse = true;
 int animationSpeedIndex = 10;
@@ -59,7 +38,6 @@ bool ignorePalettes = false;
 
 uint8_t input;
 uint8_t timer = 0;
-uint8_t bassTimer = 0;
 
 bool receivingColorData = false;
 bool receivingAnimationData = false;
@@ -75,6 +53,8 @@ CRGB newColor2 = CRGB::Red;
 char inputChar;
 
 #define FLASH_HOLD_MS 150     //How long "flash and turn off" effects stay lit
+bool serialReceived = false; //Becomes true on the first serial byte; until then pin 13 blinks as a diagnostic
+const unsigned long WAIT_BLINK_MS = 200;
 unsigned long flashOffAt = 0; //millis() time to auto turn off, 0 = none pending
 
 void IncreaseAnimationSpeedIndex(bool increase) {
@@ -112,123 +92,18 @@ void setup() {
   FastLED.setBrightness(  BRIGHTNESS );
   FastLED.setTemperature(UncorrectedTemperature);
 
-  // initialize the pushbutton pin as an input:
-  pinMode(buttonOnePin, INPUT);
-  pinMode(buttonTwoPin, INPUT);
-  pinMode(buttonThreePin, INPUT);
-
-  pinMode(paletteSelectionPin, OUTPUT);
-  pinMode(useMicSelectionPin, OUTPUT);
-  pinMode(brightnessSelectionPin, OUTPUT);
-  pinMode(listenIndicatorPin, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.begin(115200); //Must match the baud rate selected in the Beat Saber mod settings
   FastLED.setMaxRefreshRate(120);
   //Serial.println(newColor2.r);
 }
 
-bool bass = true;
-bool useMic = true;
 
 void loop() {
-  // read the state of the pushbutton value:
-  buttonOne = digitalRead(buttonOnePin);
-  buttonTwo = digitalRead(buttonTwoPin);
-  buttonThree = digitalRead(buttonThreePin);
-
-  if (useMic) {
-    digitalWrite(listenIndicatorPin, HIGH);
-  } else {
-    digitalWrite(listenIndicatorPin, LOW);
-  }
-
-  //Set the output of control LEDs:
-  switch (menuNum) {
-    case 0:
-      digitalWrite(paletteSelectionPin, HIGH);
-      digitalWrite(useMicSelectionPin, LOW);
-      digitalWrite(brightnessSelectionPin, LOW);
-      break;
-    case 1:
-      digitalWrite(paletteSelectionPin, LOW);
-      digitalWrite(useMicSelectionPin, HIGH);
-      digitalWrite(brightnessSelectionPin, LOW);
-      break;
-    case 2:
-      digitalWrite(paletteSelectionPin, LOW);
-      digitalWrite(useMicSelectionPin, LOW);
-      digitalWrite(brightnessSelectionPin, HIGH);
-      break;
-    default:
-      break;
-  }
-
-
-  if (useMic && (analogRead(A3) < 30) && bassTimer > 6) {
-    int newColInt = random(0, 26);
-    int newAnimInt = random(0, 3);
-    while (newColInt == menuPos) {
-      newColInt = random(0, 8);
-    }
-    menuPos = newColInt;
-    currentAnimation = newAnimInt;
-    bass = !bass;
-    bassTimer = 0;
-  }
-  bassTimer++;
-
   FastLED.setBrightness(BRIGHTNESS);
-  // check if the pushbutton is pressed. If it is, the buttonState is HIGH:
-  if (buttonOne == HIGH || buttonTwo == HIGH || buttonThree == HIGH ) {
-    // turn LED on:
-    digitalWrite(LED_BUILTIN, HIGH);
-  } else {
-    // turn LED off:
-    digitalWrite(LED_BUILTIN, LOW);
-  }
-
-  //////////////////////////////////////////
-  //------------BUTTON CONTROL------------// //This is for premade palettes to control using digital pins on arduino.
-  //////////////////////////////////////////
-  if (buttonOne == HIGH && !buttonOnePressed && menuPos <= 25) {
-    if (menuNum == 0) {
-      menuPos++;
-    } else if (menuNum == 1) {
-      //IncreaseAnimationSpeedIndex(true);
-      useMic = true;
-    } else if (menuNum == 2) {
-      SelectedBRIGHTNESS = SelectedBRIGHTNESS * 2;
-    };
-    buttonOnePressed = true;
-  } else if (buttonOne == LOW && buttonOnePressed) {
-    buttonOnePressed = false;
-  }
-
-  if (buttonTwo == HIGH && !buttonTwoPressed) {
-    if (menuNum < menusCount) {
-      menuNum++;
-    } else {
-      menuNum = 0;
-    }
-    buttonTwoPressed = true;
-  } else if (buttonTwo == LOW && buttonTwoPressed) {
-    buttonTwoPressed = false;
-  }
-
-  if (buttonThree == HIGH && !buttonThreePressed  && menuPos > 0 ) {
-    if (menuNum == 0) {
-      menuPos--;
-    } else if (menuNum == 1) {
-      useMic = false;
-      menuPos = 1;
-      currentAnimation = 0;
-    } else if (menuNum == 2) {
-      SelectedBRIGHTNESS = SelectedBRIGHTNESS / 2;
-    };
-    buttonThreePressed = true;
-  } else if (buttonThree == LOW && buttonThreePressed) {
-    buttonThreePressed = false;
-  }
+  //Diagnostic: blink pin 13 every 200ms until the first serial byte arrives, then leave it off
+  digitalWrite(LED_BUILTIN, (!serialReceived && (millis() / WAIT_BLINK_MS) % 2) ? HIGH : LOW);
 
   //////////////////////////////////////////
   //----------- SERIAL CONTROL------------// //This is for different setting using Serial Monitor (Arduino IDE) OR my separate console app.
@@ -300,6 +175,7 @@ void loop() {
 /////////////////////////////////////////
 
 void ProcessSerialByte(uint8_t b) {
+  serialReceived = true;
   input = b;
   inputChar = input;
   //Serial.println(inputChar);

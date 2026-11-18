@@ -42,13 +42,32 @@ namespace LightOut
         public void OnStart()
         {
             log.Info("Starting LightToSerialRelight");
+            // Stay subscribed: a soft restart (settings OK) rebuilds the main menu and
+            // destroys our DontDestroyOnLoad host, so the menu must be re-added every time.
             MainMenuAwaiter.MainMenuInitializing += AddSettingsMenu;
         }
 
+        private Settings _menuHost;
+
         private void AddSettingsMenu()
         {
-            MainMenuAwaiter.MainMenuInitializing -= AddSettingsMenu;
-            BSMLSettings.Instance.AddSettingsMenu("LightOut", "LightOut.UI.settings.bsml", Settings.instance);
+            if (_menuHost != null)
+            {
+                try { BSMLSettings.Instance.RemoveSettingsMenu(_menuHost); }
+                catch (Exception e) { log.Debug(e); }
+            }
+            // Also clears a stale registration whose host Unity already destroyed.
+            try { BSMLSettings.Instance.RemoveSettingsMenu(Settings.instance); }
+            catch (Exception e) { log.Debug(e); }
+
+            _menuHost = Settings.instance;
+            BSMLSettings.Instance.AddSettingsMenu("LightOut", "LightOut.UI.settings.bsml", _menuHost);
+
+            // Connect automatically instead of waiting for the user to press OK.
+            if (_menuHost._isModEnabled && (Settings.arduinoPort == null || !Settings.arduinoPort.IsOpen))
+            {
+                _menuHost.OpenConnection();
+            }
         }
 
         // Kept for Settings.UpdateConnection; the event listener is now installed via SiraUtil

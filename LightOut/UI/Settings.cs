@@ -131,15 +131,55 @@ namespace LightOut
 
             if (portIsOpen)
             {
-                char[] x = new char[1] {'-'};
-                arduinoPort.Write(x, 0, 1);
-                yield return new WaitForSeconds(3);
-                incomingByte = arduinoPort.ReadByte();
-                if (incomingByte == (int)'a')
+                // Opening the port resets most Arduinos (DTR); give the bootloader time to finish.
+                yield return new WaitForSeconds(2);
+
+                bool handshakeOk = false;
+                // Resend the probe until the Arduino answers, up to ~5 seconds.
+                for (int attempt = 0; attempt < 10 && !handshakeOk; attempt++)
+                {
+                    try
+                    {
+                        if (attempt == 0) arduinoPort.DiscardInBuffer();
+                        arduinoPort.Write(new char[] { '-' }, 0, 1);
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.log.Error("Failed to write handshake byte.");
+                        Plugin.log.Error(e);
+                        break;
+                    }
+
+                    yield return new WaitForSeconds(0.5f);
+
+                    try
+                    {
+                        while (arduinoPort.BytesToRead > 0)
+                        {
+                            incomingByte = arduinoPort.ReadByte();
+                            if (incomingByte == (int)'a') { handshakeOk = true; break; }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.log.Error("Failed to read handshake reply.");
+                        Plugin.log.Error(e);
+                        break;
+                    }
+                }
+
+                if (handshakeOk)
                 {
                     Plugin.log.Notice("Connection established.");
-                    arduinoPort.Write("r");
-                    arduinoPort.Write("#");
+                    try
+                    {
+                        arduinoPort.Write("r");
+                        arduinoPort.Write("#");
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.log.Error(e);
+                    }
                 }
                 else
                 {
@@ -157,7 +197,10 @@ namespace LightOut
         [UIAction("refresh-btn-action")]
         private void RefreshStatus()
         {
-            if (arduinoPort.IsOpen)
+            if (modifiedText == null)
+                return;
+
+            if (arduinoPort != null && arduinoPort.IsOpen)
             {
                 modifiedText.text = "Connection with arduino has been established.";
             }

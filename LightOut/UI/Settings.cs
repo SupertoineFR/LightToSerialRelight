@@ -27,9 +27,8 @@ namespace LightOut
             }
         }
 
-        public static Config config;
+        public static BS_Utils.Utilities.Config config;
         public static SerialPort arduinoPort = null;
-        public static Settings settings;
 
         [UIValue("boolEnable")]
         public bool _isModEnabled
@@ -192,7 +191,7 @@ namespace LightOut
         //MODAL
 
         [UIComponent("modified-text")]
-        private TextMeshProUGUI modifiedText;
+        private TextMeshProUGUI modifiedText = null;
 
         [UIAction("refresh-btn-action")]
         private void RefreshStatus()
@@ -212,7 +211,7 @@ namespace LightOut
 
         public void Awake()
         {
-            config = new Config("LightOut");
+            config = new BS_Utils.Utilities.Config("LightOut");
         }
         public void CloseConnection()
         {

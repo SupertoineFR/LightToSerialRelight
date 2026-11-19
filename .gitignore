@@ -48,6 +48,9 @@ TestResult.xml
 [Rr]eleasePS/
 dlldata.c
 
+# Compiled dynamic-link libraries
+*.dll
+
 # Benchmark Results
 BenchmarkDotNet.Artifacts/
 

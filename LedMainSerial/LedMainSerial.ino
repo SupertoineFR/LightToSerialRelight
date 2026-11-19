@@ -55,7 +55,10 @@ char inputChar;
 #define FLASH_HOLD_MS 150     //How long "flash and turn off" effects stay lit
 bool serialReceived = false; //Becomes true on the first serial byte; until then pin 13 blinks as a diagnostic
 const unsigned long WAIT_BLINK_MS = 200;
+const unsigned long STARTUP_EFFECT_DELAY_MS = 5000; //Delay for the first effect, where it's green red and blue to time out
+const unsigned long RED_PULSE_PERIOD_MS = 40000;
 unsigned long flashOffAt = 0; //millis() time to auto turn off, 0 = none pending
+unsigned long startupTime = 0; //I don't know what this does
 
 void IncreaseAnimationSpeedIndex(bool increase) {
   int newIndex;
@@ -95,6 +98,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.begin(115200); //Must match the baud rate selected in the Beat Saber mod settings
+  startupTime = millis();
   FastLED.setMaxRefreshRate(120);
   //Serial.println(newColor2.r);
 }
@@ -119,6 +123,27 @@ void loop() {
     menuPos = 29;
     flashOffAt = 0;
   }
+
+  // Startup effect: switch to a slow red pulse after 5 seconds.
+  // Immediately disabled when the first serial byte arrives.
+  if (!serialReceived &&
+      (unsigned long)(millis() - startupTime) >= STARTUP_EFFECT_DELAY_MS) {
+
+    uint8_t pulseBrightness = beatsin8(
+      255 / (RED_PULSE_PERIOD_MS / 1000),
+      10,
+      255
+    );
+
+    fill_solid(leds, NUM_LEDS, CRGB::Red);
+    FastLED.setBrightness(pulseBrightness);
+    ShowLED();
+
+    return;
+  }
+
+  // Restore normal brightness after leaving startup mode.
+  FastLED.setBrightness(BRIGHTNESS);
 
   /////////////////////////////////////////
   //----------PALETTE SELECTION----------//

@@ -1,7 +1,7 @@
 # LightToSerialRelight
 A Beat Saber mod that allows you to control your Arduino LED Strip based on Beat Saber events.
 
-**Disclaimer**: AI (claude opus 5.5 low) was used to patch this mod up to 1.40.8
+**Disclaimer**: AI was used to patch this mod up to 1.40.8, and more AI to add chroma and modify the arduino code.
 
 This mod is yet another updated version of the mod created by [D3rPole](https://github.com/D3rPole/BS-LightToSerial).   
 It was forked from [MyLegIsPotato](https://github.com/MyLegIsPotato/LightToSerialRelight), in order to update it. It's not my code, far from it.

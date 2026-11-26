@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Reflection;
+using HarmonyLib;
 using UnityEngine;
 using System.Collections;
 using BS_Utils.Utilities;
@@ -19,6 +21,7 @@ namespace LightOut
         private readonly IGamePause _gamePause;
         private BeatmapDataCallbackWrapper _eventCallback;
         private bool _noteCutSubscribed;
+        private static EventListener _activeListener;
         private Color C1;
         private Color C2;
         public int redLeft;
@@ -52,6 +55,7 @@ namespace LightOut
 
             Plugin.log.Notice("Initializing..");
             Plugin.log.Notice(Settings.instance.eventChoice);
+            _activeListener = this;
 
             _gamePause.didPauseEvent += OnGamePaused;
 
@@ -67,6 +71,7 @@ namespace LightOut
                 Plugin.log.Info("Adding event listner to lightEvents");
                 _eventCallback = Ec.AddBeatmapCallback<BasicBeatmapEventData>(EventHappened); //Flash on map's light events
             }
+            ChromaLightEventPatch.Install();
 
             C1 = Cm.ColorForType(ColorType.ColorB);
             redLeft = Mathf.RoundToInt(C1.r * 255);
@@ -77,7 +82,11 @@ namespace LightOut
             greenRight = Mathf.RoundToInt(C2.g * 255);
             blueRight = Mathf.RoundToInt(C2.b * 255);
 
-            if (Settings.instance.rainbowMode)
+            if (ChromaLightEventPatch.Installed)
+            {
+                Plugin.log.Info("Chroma detected; waiting for its applied light colors.");
+            }
+            else if (Settings.instance.rainbowMode)
             {
                 StartRainbowMode(Settings.arduinoPort);
             }
@@ -95,6 +104,7 @@ namespace LightOut
                 _spawnController.noteWasCutEvent -= OnNoteCut;
             if (_eventCallback != null)
                 Ec.RemoveBeatmapCallback(_eventCallback);
+            if (_activeListener == this) _activeListener = null;
 
             if (Settings.arduinoPort != null && Settings.arduinoPort.IsOpen)
             {
@@ -106,6 +116,25 @@ namespace LightOut
 
         int lastEventNumber = 0;
 
+        internal static void ApplyActualChromaColors(Color[] colors)
+        {
+            EventListener listener = _activeListener;
+            if (listener == null || colors == null || colors.Length == 0 || !Active)
+                return;
+
+            // These are the colors Chroma has applied to this light group, not the
+            // ColorManager defaults captured when the level started.
+            Color primary = colors[0];
+            Color secondary = colors.Length > 1 ? colors[1] : primary;
+            listener.redLeft = Mathf.Clamp(Mathf.RoundToInt(primary.r * 255f), 0, 255);
+            listener.greenLeft = Mathf.Clamp(Mathf.RoundToInt(primary.g * 255f), 0, 255);
+            listener.blueLeft = Mathf.Clamp(Mathf.RoundToInt(primary.b * 255f), 0, 255);
+            listener.redRight = Mathf.Clamp(Mathf.RoundToInt(secondary.r * 255f), 0, 255);
+            listener.greenRight = Mathf.Clamp(Mathf.RoundToInt(secondary.g * 255f), 0, 255);
+            listener.blueRight = Mathf.Clamp(Mathf.RoundToInt(secondary.b * 255f), 0, 255);
+            listener.SendColorToArduino(Settings.arduinoPort);
+        }
+
         void EventHappened(BasicBeatmapEventData Data)
         {
             int Event;
@@ -115,8 +144,7 @@ namespace LightOut
             {
                 if(lastEventNumber != value && Data.time > (lastEventTime + maxArduinoDelay*0.001)) //Make sure to never send same signal twice AND do not oversend, otherwise arduino will display beats too late.
                 {
-                    Plugin.log.Info("Event happened: " + value.ToString());
-                    if (Settings.instance.rainbowMode)
+                    if (Settings.instance.rainbowMode && !ChromaLightEventPatch.Installed)
                     {
                         Settings.arduinoPort.Write("^");
                     }
@@ -196,8 +224,6 @@ namespace LightOut
 
         void SendColorToArduino(SerialPort port)
         {
-            Plugin.log.Debug("Before color boost: " + redLeft + " " + greenLeft + " " + blueLeft);
-            Plugin.log.Debug("Before color boost: " + redRight + " " + greenRight + " " + blueRight);
 
             int r1, g1, b1;
             int r2, g2, b2;
@@ -208,14 +234,8 @@ namespace LightOut
             double h1 = colorLeft.GetHue();
             double h2 = colorRight.GetHue();
 
-            Plugin.log.Debug("double h1 = " + h1);
-            Plugin.log.Debug("double h2 = " + h2);
-
             HsvToRgb(h1, 1, 1, out r1, out g1, out b1);
             HsvToRgb(h2, 1, 1, out r2, out g2, out b2);
-
-            Plugin.log.Debug("After color boost: " + r1 +" "+ g1 +" "+ b1);
-            Plugin.log.Debug("After color boost: " + r2 + " " + g2 + " " + b2);
 
             Color rightColor = new Color(r1,g1,b1);
             Color leftColor = new Color(r2, g2, b2);
@@ -237,18 +257,6 @@ namespace LightOut
             colorsByte[6] = Convert.ToByte(s_b);
             colorsByte[7] = Convert.ToByte('%');
 
-            for(int x = 0; x < colorsByte.Length; x++)
-            {
-                try
-                {
-                    Plugin.log.Info("Writing: " + colorsByte[x]);
-                }
-                catch (Exception e)
-                {
-                    Plugin.log.Error(e);
-                }
-
-            }
             port.Write(colorsByte, 0, 8); 
         }
 
@@ -356,6 +364,50 @@ namespace LightOut
             if (i < 0) return 0;
             if (i > 255) return 255;
             return i;
+        }
+    }
+
+    [HarmonyPatch]
+    internal static class ChromaLightEventPatch
+    {
+        private static Harmony _harmony;
+        private static bool _loggedColorEvent;
+        internal static bool Installed => _harmony != null;
+
+        internal static void Install()
+        {
+            if (_harmony != null) return;
+            Type targetType = Type.GetType("Chroma.Lighting.ChromaLightSwitchEventEffect, Chroma");
+            if (targetType == null) return;
+            _harmony = new Harmony("LightToSerialRelight.ChromaColors");
+            _harmony.PatchAll(typeof(ChromaLightEventPatch).Assembly);
+            Plugin.log.Info("Installed Chroma light color hook.");
+        }
+
+        private static MethodBase TargetMethod()
+        {
+            Type targetType = Type.GetType("Chroma.Lighting.ChromaLightSwitchEventEffect, Chroma");
+            return targetType?.GetMethod("BasicCallback", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        }
+
+        private static void Postfix(object __instance, BasicBeatmapEventData __0)
+        {
+            if (__instance == null || __0 == null) return;
+            try
+            {
+                object colorizer = __instance.GetType().GetProperty("Colorizer", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(__instance, null);
+                object currentColors = colorizer?.GetType().GetProperty("Color", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(colorizer, null);
+                if (currentColors is Color[] colors)
+                {
+                    if (!_loggedColorEvent)
+                    {
+                        Plugin.log.Info("Received Chroma light color update.");
+                        _loggedColorEvent = true;
+                    }
+                    EventListener.ApplyActualChromaColors(colors);
+                }
+            }
+            catch (Exception e) { Plugin.log.Warn("Could not read Chroma's applied light colors: " + e.Message); }
         }
     }
 }

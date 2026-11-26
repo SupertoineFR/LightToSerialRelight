@@ -114,7 +114,9 @@ void loop() {
   //////////////////////////////////////////
   //Process EVERY byte waiting in the buffer on every frame, so commands never queue up.
   //Effect commands just set state, so when several arrive at once the latest one wins.
+  // Process incoming serial data and flag that a byte has been received
   while (Serial.available() > 0) {
+    serialReceived = true;
     ProcessSerialByte(Serial.read());
   }
 
@@ -250,7 +252,7 @@ void ProcessSerialByte(uint8_t b) {
       case '@': menuPos = 1; currentAnimation = 0; flashOffAt = 0; ClearBuffer(); break; //Closes Connection and enables other effects.
 
       //BeatSaber mod palettes:
-      case '#': menuPos = 20; flashOffAt = 0; break;
+      case '#': menuPos = 20; flashOffAt = 0; ClearBuffer(); break; // Lobby animation - Clear buffer to prevent crashes
       case 'q': menuPos = 21; flashOffAt = 0; break;
       case 'w': menuPos = 22; flashOffAt = 0; break;
       case 'e': menuPos = 23; flashOffAt = millis() + FLASH_HOLD_MS; break; //Flash, then auto turn off
